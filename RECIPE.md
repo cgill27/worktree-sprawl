@@ -214,7 +214,7 @@ All colors come from `theme()` unless the person picks their own.
   is scanned, cached, removed or pruned), `ui.js` (shadcn-style UI helpers: tokens, button with
   primary/secondary/outline/ghost/danger, card, segmented, toggleSwitch,
   statCell, controlInput), `icon.svg` (24×24
-  stroke treemap glyph).
+  stroke treemap glyph), `help.svg` (16×16 "?" drawn inside each help circle).
 - **herdr functions:** `exec`, `home`, `appHome`, `readTextFile`, `window()`
   (platform), `theme`, `settings` (zoom), `panes`, `terminals`, `agents`,
   `spaces`, `run`, `shared`/`setShared`, `props`, `pickFolder`, `notify`, `layout`,
