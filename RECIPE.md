@@ -138,6 +138,12 @@ All colors come from `theme()` unless the person picks their own.
 - **Orphan counts** (header, "All worktrees" row, repository rows, Overview)
   are of every orphan, locked ones included; the header adds ", n locked". Only
   **Delete all orphans (n)** counts the ones that can be removed.
+- **Keys** (the root tracks a focus handle, focused when a worktree is clicked
+  or a confirmation opens; ignored on the Settings page and with modifiers):
+  Delete or Backspace opens the confirmation for the selected orphans, else for
+  the pinned orphan; in the confirmation Enter removes the clean ones and Escape
+  cancels (the "discard" button has no key); Escape otherwise unpins. The
+  details card of an orphan has a **Delete…** button that does the same.
 - **Locked:** worktrees locked with `git worktree lock`, or whose repo's lock
   state couldn't be read, show "Orphan (locked)" / "Orphan (lock state
   unknown)" and can't be selected.

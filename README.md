@@ -54,6 +54,8 @@ A worktree is an orphan when no live terminal on this machine has its working fo
 
 Select orphans with the checkbox on a block or row, the group checkbox on a repository (all of its orphans), or **Select to delete** in the panel. **Delete selected** and **Delete all orphans** both open a confirmation listing the count and size first.
 
+For one worktree the quick way is the keyboard: click an orphan, press **Delete** (or Backspace), then **Enter**. Delete opens the confirmation for the worktree in the panel, or for every selected orphan when some are ticked; the panel's **Delete…** button does the same. In the confirmation, Enter removes the clean worktrees and **Esc** cancels. Discarding uncommitted changes or local files has no key: that always takes a click on its button. Esc also unpins a worktree.
+
 - Worktrees with uncommitted changes, or with ignored local files that git would delete along with the folder (`.env`, local config; build output such as `node_modules` and `dist` doesn't count), are listed separately with a sample of the files. You choose between removing only the clean ones and removing all of them.
 - Removal runs `git worktree remove` one worktree at a time. `--force` is used only for a worktree with uncommitted changes, and only after you chose to discard them.
 - Right before each removal the mod checks again that no terminal is inside and that the worktree isn't locked. If the lock state can't be read, the worktree is skipped.

@@ -92,6 +92,7 @@ const HELP = {
       { term: "Red border with ✓", text: "Selected for deletion." },
       { term: "Clicking", text: "Hover a block to preview it in the panel. Click it to pin it (highlighted outline): the panel then stays on it while you move the pointer. Click it again, press ✕ in the panel, or click empty map space to unpin." },
       { term: "Selecting orphans", text: "Tick the box in an orphan’s top-left corner, or use Select to delete in its details. Selecting also pins it. Click a name in the Selected list to bring its details back." },
+      { term: "Keys", text: "After clicking a worktree: Delete (or Backspace) asks to remove the selected orphans, or the one shown in the panel if none are selected. In the confirmation, Enter removes the clean ones and Esc cancels. Esc also unpins." },
     ],
   },
   list: {
@@ -378,6 +379,7 @@ export default class WorktreeSprawl extends View {
     this.toolbarMode = props()?.mode === "toolbar";
     if (this.toolbarMode) return;
 
+    this.keys = cx.focus_handle();  // holds the keyboard after a click on a worktree: Delete, Enter, Escape
     this.items = [];
     this.stale = [];
     this.sizes = {};
@@ -789,6 +791,7 @@ export default class WorktreeSprawl extends View {
 
   /** Click: pin a worktree's details in the panel (again: unpin). */
   pinTile(tile, cx) {
+    this.keys.focus();
     this.pinned = this.pinned === tile.path ? null : tile.path;
     cx.notify();
   }
@@ -796,6 +799,7 @@ export default class WorktreeSprawl extends View {
   /** The orphan checkbox and the panel's Select button: mark for deletion. */
   toggleSelect(tile, cx) {
     if (tile.state !== "orphan" || tile.locked) return;
+    this.keys.focus();
     if (this.selected.has(tile.path)) this.selected.delete(tile.path);
     else {
       this.selected.add(tile.path);
@@ -807,7 +811,47 @@ export default class WorktreeSprawl extends View {
 
   askRemove(paths, kind, cx) {
     this.confirm = { paths, kind };
+    this.keys.focus(); // so Enter and Escape answer the confirmation
     cx.notify();
+  }
+
+  /** What the open confirmation would remove: all of it, and the part that loses nothing but the folder. */
+  confirmParts(m) {
+    const byPath = new Map(m.tiles.map((t) => [t.path, t]));
+    const targets = (this.confirm?.paths ?? []).map((p) => byPath.get(p)).filter((t) => t && t.state === "orphan" && !t.locked);
+    // "Clean" means nothing is lost but the folder: no uncommitted changes and no ignored local files.
+    return { targets, clean: targets.filter((t) => !t.dirty && !t.hasLocal), risky: targets.filter((t) => t.dirty || t.hasLocal) };
+  }
+
+  /**
+   * Keys, once a worktree has been clicked. Delete (or Backspace) asks to remove the selected orphans,
+   * else the pinned one. In the confirmation, Enter removes the clean ones and Escape cancels; discarding
+   * changes or local files always takes a click. Escape otherwise unpins.
+   */
+  onKey(event, cx) {
+    if (this.showSettings || this.deleting || event.keystroke !== event.key) return;
+    const key = event.key;
+    if (this.confirm) {
+      if (key === "escape") { this.confirm = null; cx.notify(); }
+      else if (key === "enter") {
+        const { clean } = this.confirmParts(this.model());
+        if (clean.length) this.remove(clean.map((t) => t.path), cx);
+      }
+      return;
+    }
+    if (key === "delete" || key === "backspace") {
+      const pinned = this.model().tiles.find((t) => t.path === this.pinned);
+      const paths = this.selected.size ? [...this.selected] : pinned && pinned.state === "orphan" && !pinned.locked ? [pinned.path] : [];
+      if (!paths.length) return;
+      if (this.busyWork() || !this.liveScan) {
+        notify({ title: "Wait for the scan to finish", body: "Worktrees can be removed once the current scan is complete.", level: "warning" });
+        return;
+      }
+      this.askRemove(paths, "selected", cx);
+    } else if (key === "escape" && this.pinned) {
+      this.pinned = null;
+      cx.notify();
+    }
   }
 
   remove(paths, cx) {
@@ -1054,6 +1098,7 @@ export default class WorktreeSprawl extends View {
     }
 
     return v_flex().id("wtm-root").size_full().min_h(0).bg(c.canvas).text_color(c.text)
+      .track_focus(this.keys).on_key_down((event, cx) => this.onKey(event, cx))
       .p(G.lg).gap(G.md).children(body);
   }
 
@@ -1107,11 +1152,7 @@ export default class WorktreeSprawl extends View {
   }
 
   confirmBar(c, m) {
-    const byPath = new Map(m.tiles.map((t) => [t.path, t]));
-    const targets = this.confirm.paths.map((p) => byPath.get(p)).filter((t) => t && t.state === "orphan" && !t.locked);
-    // "Clean" means nothing is lost but the folder: no uncommitted changes and no ignored local files.
-    const clean = targets.filter((t) => !t.dirty && !t.hasLocal);
-    const risky = targets.filter((t) => t.dirty || t.hasLocal);
+    const { targets, clean, risky } = this.confirmParts(m);
     const dirty = targets.filter((t) => t.dirty);
     const local = targets.filter((t) => t.hasLocal);
     const kb = (list) => list.reduce((s, t) => s + (t.size ?? 0), 0);
@@ -1135,7 +1176,9 @@ export default class WorktreeSprawl extends View {
     return v_flex().w_full().gap(G.sm).p(G.md).rounded(R.control).bg(c.card).border_1().border_color(c.destructive)
       .child(div().text_size(this.fs(12)).font_semibold().child(targets.length ? "Remove worktrees?" : "Nothing to remove"))
       .children(lines.map((l) => div().text_size(T.small).text_color(c.mutedForeground).child(l)))
-      .child(actions);
+      .child(actions)
+      .child(div().text_size(T.label).text_color(c.dim)
+        .child(clean.length ? `Enter removes ${risky.length ? `the ${clean.length} clean` : plural(clean.length, "worktree")} · Esc cancels` : "Esc cancels"));
   }
 
   failuresBar(c) {
@@ -1654,7 +1697,11 @@ export default class WorktreeSprawl extends View {
         .child(button("wtm-open-space", "Open space here", () => run("space.new", { folder: tile.path }), c, { variant: "outline" }))
         .child(button("wtm-reveal", "Reveal", (_e, cx) => { cx.spawn(async () => { await reveal(tile.path); }); }, c, { variant: "outline", tooltip: "Open the folder in the file manager" }))
         .when(isOrphan && !tile.locked, (el) => el.child(button("wtm-toggle-select", selected ? "Deselect" : "Select to delete",
-          (_e, cx) => this.toggleSelect(tile, cx), c, { variant: selected ? "outline" : "danger" }))));
+          (_e, cx) => this.toggleSelect(tile, cx), c, { variant: "outline" }))
+          .child(button("wtm-delete-one", "Delete…", (_e, cx) => this.askRemove([tile.path], "selected", cx), c,
+            { variant: "danger", disabled: this.busyWork() || !this.liveScan, tooltip: "Remove this worktree (asks first). Key: Delete" }))))
+      .when(isOrphan && !tile.locked, (el) => el.child(div().text_size(T.label).text_color(c.dim)
+        .child("Press Delete to remove it, then Enter to confirm.")));
   }
 
   selectionCard(c, m) {
