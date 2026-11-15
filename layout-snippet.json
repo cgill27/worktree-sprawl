@@ -1,0 +1,7 @@
+{
+  "//": "Add this block to a row in your own layout (e.g. next to the tab bar block, in the same row). Shipped layouts are read-only: clone one first with `herdr-app do layout.clone '{\"name\":\"main\",\"as\":\"my-main\"}'`.",
+  "id": "worktree-sprawl-toolbar-button",
+  "type": "block",
+  "size": { "px": 112 },
+  "content": { "mod": "worktree-sprawl", "props": { "mode": "toolbar" } }
+}

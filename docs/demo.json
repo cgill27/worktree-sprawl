@@ -1,0 +1,271 @@
+{
+ "roots": [
+  "~/.herdr/worktrees",
+  "~/code/worktrees"
+ ],
+ "worktrees": [
+  {
+   "repo": "storefront",
+   "name": "checkout-redesign",
+   "mb": 2140,
+   "changed": 7,
+   "untracked": 2,
+   "ahead": 3,
+   "unpushed": 3,
+   "ageHours": 1,
+   "subject": "Rework the payment step",
+   "users": [
+    {
+     "name": "Claude Code",
+     "status": "working",
+     "tab": "1"
+    }
+   ],
+   "branch": "feat/checkout-redesign"
+  },
+  {
+   "repo": "storefront",
+   "name": "fix-cart-totals",
+   "mb": 1980,
+   "changed": 1,
+   "ageHours": 3,
+   "subject": "Round line totals once",
+   "users": [
+    {
+     "name": "Claude Code",
+     "status": "blocked",
+     "tab": "2"
+    }
+   ],
+   "branch": "fix/fix-cart-totals"
+  },
+  {
+   "repo": "storefront",
+   "name": "search-facets",
+   "mb": 1870,
+   "ageHours": 30,
+   "subject": "Add brand and price facets",
+   "users": [
+    {
+     "name": "Codex",
+     "status": "done",
+     "tab": "3"
+    }
+   ],
+   "branch": "feat/search-facets"
+  },
+  {
+   "repo": "storefront",
+   "name": "upgrade-react-19",
+   "mb": 2310,
+   "ageHours": 410,
+   "subject": "Bump react and react-dom",
+   "branch": "chore/upgrade-react-19"
+  },
+  {
+   "repo": "storefront",
+   "name": "spike-edge-cache",
+   "mb": 1750,
+   "changed": 4,
+   "untracked": 1,
+   "ageHours": 900,
+   "subject": "Try caching product pages at the edge",
+   "localFiles": [
+    ".env.local"
+   ],
+   "branch": "spike/spike-edge-cache"
+  },
+  {
+   "repo": "storefront",
+   "name": "old-banner-test",
+   "mb": 1690,
+   "ageHours": 1500,
+   "subject": "A/B test the summer banner",
+   "branch": "feat/old-banner-test"
+  },
+  {
+   "repo": "api-gateway",
+   "name": "rate-limit-headers",
+   "root": "~/code/worktrees",
+   "mb": 640,
+   "changed": 2,
+   "ageHours": 2,
+   "subject": "Return RateLimit-Remaining",
+   "users": [
+    {
+     "name": "Claude Code",
+     "status": "idle",
+     "tab": "1"
+    }
+   ],
+   "branch": "feat/rate-limit-headers"
+  },
+  {
+   "repo": "api-gateway",
+   "name": "grpc-health",
+   "root": "~/code/worktrees",
+   "mb": 610,
+   "ageHours": 50,
+   "subject": "Add the gRPC health service",
+   "users": [
+    {
+     "name": "Shell"
+    }
+   ],
+   "branch": "feat/grpc-health"
+  },
+  {
+   "repo": "api-gateway",
+   "name": "auth-refresh-bug",
+   "root": "~/code/worktrees",
+   "mb": 655,
+   "ageHours": 200,
+   "subject": "Refresh tokens before they expire",
+   "branch": "fix/auth-refresh-bug"
+  },
+  {
+   "repo": "api-gateway",
+   "name": "otel-traces",
+   "root": "~/code/worktrees",
+   "mb": 702,
+   "ageHours": 620,
+   "subject": "Export traces over OTLP",
+   "locked": true,
+   "branch": "feat/otel-traces"
+  },
+  {
+   "repo": "mobile-app",
+   "name": "offline-sync",
+   "mb": 3120,
+   "changed": 12,
+   "untracked": 5,
+   "ahead": 8,
+   "unpushed": 8,
+   "ageHours": 5,
+   "subject": "Queue writes while offline",
+   "users": [
+    {
+     "name": "Claude Code",
+     "status": "working",
+     "tab": "1"
+    },
+    {
+     "name": "Shell"
+    }
+   ],
+   "branch": "feat/offline-sync"
+  },
+  {
+   "repo": "mobile-app",
+   "name": "push-permissions",
+   "mb": 2890,
+   "ageHours": 96,
+   "subject": "Ask for push permission later",
+   "branch": "feat/push-permissions"
+  },
+  {
+   "repo": "mobile-app",
+   "name": "ios-18-build",
+   "mb": 3340,
+   "ageHours": 760,
+   "subject": "Build with Xcode 16",
+   "branch": "chore/ios-18-build"
+  },
+  {
+   "repo": "docs-site",
+   "name": "api-reference",
+   "mb": 420,
+   "changed": 3,
+   "ageHours": 8,
+   "subject": "Generate the reference from OpenAPI",
+   "users": [
+    {
+     "name": "Codex",
+     "status": "working",
+     "tab": "1"
+    }
+   ],
+   "branch": "feat/api-reference"
+  },
+  {
+   "repo": "docs-site",
+   "name": "dark-mode",
+   "mb": 395,
+   "ageHours": 300,
+   "subject": "Add a dark theme",
+   "branch": "feat/dark-mode"
+  },
+  {
+   "repo": "docs-site",
+   "name": "typo-fixes",
+   "mb": 380,
+   "ageHours": 1100,
+   "subject": "Fix typos in the quick start",
+   "branch": "fix/typo-fixes"
+  },
+  {
+   "repo": "design-system",
+   "name": "button-variants",
+   "root": "~/code/worktrees",
+   "mb": 910,
+   "untracked": 1,
+   "ageHours": 12,
+   "subject": "Add the ghost and danger buttons",
+   "users": [
+    {
+     "name": "Claude Code",
+     "status": "done",
+     "tab": "1"
+    }
+   ],
+   "branch": "feat/button-variants"
+  },
+  {
+   "repo": "design-system",
+   "name": "tokens-v2",
+   "root": "~/code/worktrees",
+   "mb": 880,
+   "ageHours": 440,
+   "subject": "Move colors to design tokens",
+   "branch": "feat/tokens-v2"
+  },
+  {
+   "repo": "infra",
+   "name": "terraform-1-9",
+   "root": "~/code/worktrees",
+   "mb": 260,
+   "ageHours": 70,
+   "subject": "Upgrade the providers",
+   "users": [
+    {
+     "name": "Shell"
+    }
+   ],
+   "branch": "chore/terraform-1-9"
+  },
+  {
+   "repo": "infra",
+   "name": "staging-cluster",
+   "root": "~/code/worktrees",
+   "mb": 240,
+   "changed": 2,
+   "ageHours": 980,
+   "subject": "Resize the staging node pool",
+   "branch": "feat/staging-cluster"
+  }
+ ],
+ "stale": [
+  {
+   "repo": "storefront",
+   "name": "hotfix-0412"
+  },
+  {
+   "repo": "mobile-app",
+   "name": "android-crash"
+  },
+  {
+   "repo": "mobile-app",
+   "name": "spike-maps"
+  }
+ ]
+}
