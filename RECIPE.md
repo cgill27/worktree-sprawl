@@ -78,7 +78,9 @@ Inside the tab, top to bottom, on the theme's `canvas`, padded 16px:
      delete** / **Deselect**. When anything is selected, a **"n selected"** card
      lists them (click a name to pin it, ✕ to deselect) with **Delete n
      selected**.
-5. **Settings page** (scrolling, max 820px wide): cards **Worktree folders**
+5. **Settings page** (scrolling, max 820px wide): cards **Tab bar button** (after Worktree
+   folders: whether the shown layout has the launcher button, and **Add to
+   layout**), **Worktree folders**
    (list with worktree counts or the error, Remove; an input with Browse… and
    Add; Reset to defaults), **Caching** (toggle with `?`; "Re-measure disk use
    after" 5 min / 15 min / 1 h / 6 h; the cache file path, last saved time and
@@ -132,9 +134,15 @@ All colors come from `theme()` unless the person picks their own.
   `git worktree list --porcelain` still reads and doesn't show it locked
   (unreadable lock state = skip). Then `git worktree prune` per repo, a toast
   ("Removed 4 worktrees · Freed about 2.1 GB. Branches were kept."), and a
-  rescan. Branches are never deleted. Delete buttons are enabled only after a
-  complete scan and measurement this session, and never while scanning,
-  measuring, removing or pruning.
+  rescan. Branches are never deleted. The header's delete buttons are enabled only
+  after a complete scan and measurement this session, and never while scanning,
+  measuring, removing or pruning. The Delete key and the panel's **Delete…** can
+  ask during a scan; a removal confirmed while a scan runs (or before one has
+  finished) is kept as `pendingRemove`, shown as "Removing n worktrees when the
+  scan finishes…" (Esc cancels), and starts by itself when the scan ends, or is
+  dropped with a toast if the scan fails. The 60 s refresh doesn't start while
+  a confirmation is open. "Remove N clean" (and Enter) never forces: a worktree
+  that has uncommitted changes or local files by the time it runs is skipped.
 - **Orphan counts** (header, "All worktrees" row, repository rows, Overview)
   are of every orphan, locked ones included; the header adds ", n locked". Only
   **Delete all orphans (n)** counts the ones that can be removed.
@@ -150,6 +158,16 @@ All colors come from `theme()` unless the person picks their own.
 - **Can't run here:** every scan first checks the platform and, until it has
   seen a usable one, `git --version`. On Windows, or with git missing or older
   than 2.31, the scan stops and a "Scan failed" notice says why (`checks.js`).
+- **Tab bar button** (Settings card): shows whether the shown layout has the
+  launcher button (any block showing this mod with `mode: "toolbar"`) and offers
+  **Add to layout** when it doesn't; it never adds a second one. For one of
+  Herdr's own layouts (listed in `installed.json` as `layout:<name>`), which
+  Herdr replaces on every start, it writes `layout()` plus the block to
+  `layouts/<name>-worktrees.json` and runs `layout.switch`; for the person's own
+  layout it adds the block to that layout's file (`writeTextFile` with the text
+  it read). The block goes right after the tab bar (`id: "tabs"`, else the block
+  showing the `tabs` mod) when that is in a row; otherwise the tab bar is wrapped
+  in a row that takes its size. No tab bar: a toast says to add the snippet by hand.
 - **One operation at a time:** scans, removals and prunes never overlap; a scan
   asked for meanwhile (a timer tick, a folder change) runs afterwards, and a
   scan whose folders changed while it ran is discarded and redone.
@@ -190,7 +208,8 @@ All colors come from `theme()` unless the person picks their own.
 - **Files:** `main.js` (the view), `treemap.js` (pure squarified layout and
   pixel snapping), `sorting.js` (pure sort values and comparator, tested by
   `tests/sorting.test.mjs`), `checks.js` (pure: the Windows and git-version
-  messages, tested by `tests/checks.test.mjs`), `demo.js` (made-up worktrees
+  messages, tested by `tests/checks.test.mjs`), `layout.js` (pure: adds the launcher button
+  to a layout tree, tested by `tests/layout.test.mjs`), `demo.js` (made-up worktrees
   for screenshots, read from `data/worktree-sprawl.demo`; while shown, nothing
   is scanned, cached, removed or pruned), `ui.js` (shadcn-style UI helpers: tokens, button with
   primary/secondary/outline/ghost/danger, card, segmented, toggleSwitch,
@@ -198,7 +217,8 @@ All colors come from `theme()` unless the person picks their own.
   stroke treemap glyph).
 - **herdr functions:** `exec`, `home`, `appHome`, `readTextFile`, `window()`
   (platform), `theme`, `settings` (zoom), `panes`, `terminals`, `agents`,
-  `spaces`, `run`, `shared`/`setShared`, `props`, `pickFolder`, `notify`;
+  `spaces`, `run`, `shared`/`setShared`, `props`, `pickFolder`, `notify`, `layout`,
+  `layouts`;
   `writeTextFile` (atomic replace) and `fs/promises` (`mkdir`, `exists`,
   `unlink`) for the cache, written through one serialized promise chain.
 - **gpui-kit / gpui-base:** `div`, `svg`, `Background` (`linear_gradient`,
@@ -206,7 +226,7 @@ All colors come from `theme()` unless the person picks their own.
   and hatch layers, `v_flex`, `h_flex`, `Button`, `Popover` (color pickers),
   `HoverCard` (help), `Input`,
   `InputState`, `.frames()` for the spinner, `.loop()` for the indeterminate bar.
-- **Commands:** `tab.new {name, mod}`, `pane.focus`, `pane.zoom`, `agent.focus`,
+- **Commands:** `tab.new {name, mod}`, `layout.switch {name}`, `pane.focus`, `pane.zoom`, `agent.focus`,
   `terminal.peek`, `space.new {folder}`.
 - **Programs:** `find -H <root> -maxdepth 5 ( -name node_modules -o -name .venv -o
   -name .terraform ) -prune -o -name .git -type f -print`; per worktree

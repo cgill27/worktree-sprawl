@@ -7,11 +7,12 @@
 import { View, div, svg, Background, PathBuilder } from "gpui-kit";
 import { v_flex, h_flex, Input, InputState, Button, Popover, HoverCard } from "gpui-base";
 import * as fs from "fs/promises";
-import { exec, home, appHome, readTextFile, writeTextFile, window as appWindow, theme, settings, panes, terminals, agents, spaces, run, shared, setShared, props, pickFolder, notify } from "herdr";
+import { exec, home, appHome, readTextFile, writeTextFile, window as appWindow, theme, settings, panes, terminals, agents, spaces, run, shared, setShared, props, pickFolder, notify, layout, layouts } from "herdr";
 import { squarify, snap } from "./treemap.js";
 import { tileSortValue, groupSortValue, groupTotals, comparator, normalizeListState, clickColumn, setListMode } from "./sorting.js";
 import { platformProblem, gitProblem } from "./checks.js";
 import { readDemo, demoData } from "./demo.js";
+import { hasToolbarButton, withToolbarButton, copyName, isShippedLayout } from "./layout.js";
 import { G, H as HC, R, T, tokens, toggleSwitch, button, card, cardHeader, pageTitle, mutedText, metaLabel, segmented, notice, controlInput, statCell } from "./ui.js";
 
 const MOD = "worktree-sprawl";
@@ -407,6 +408,8 @@ export default class WorktreeSprawl extends View {
     this.pinned = null;
     this.selected = new Set();
     this.confirm = null;
+    this.addingButton = false;      // the launcher button is being added to the layout
+    this.pendingRemove = null;      // a confirmed removal waiting for the running scan: { paths, discard }
     this.deleting = null;
     this.failures = [];
     this.showSettings = false;
@@ -433,7 +436,11 @@ export default class WorktreeSprawl extends View {
     this.rootInput = InputState.new({ placeholder: "~/code/worktrees" });
     this.rootInput.on("submit", (_event, submitCx) => this.addRoot(this.rootInput.value(), submitCx));
 
-    cx.timer.every(REFRESH_MS, (timerCx) => this.scan(timerCx, { sizes: "missing" }));
+    cx.timer.every(REFRESH_MS, (timerCx) => {
+      // Not while a removal is being confirmed: the answer would land in the middle of the scan.
+      if (this.confirm || this.pendingRemove) return;
+      this.scan(timerCx, { sizes: "missing" });
+    });
     // Show the last results at once from the cache, then refresh them in the background.
     cx.spawn(async (scx) => {
       const demo = await readDemo();
@@ -613,6 +620,13 @@ export default class WorktreeSprawl extends View {
         this.loaded = true; // show the error instead of the progress card
       }
       scx.notify();
+      if (this.pendingRemove && !this.queued) {
+        // A removal confirmed while this scan ran: do it now, against what the scan just found.
+        const pending = this.pendingRemove;
+        this.pendingRemove = null;
+        if (ok) { this.remove(pending.paths, scx, pending); return; }
+        notify({ title: "Nothing was removed", body: "The scan failed, so the worktrees were left alone.", level: "warning" });
+      }
       this.runQueued(scx);
     });
   }
@@ -831,22 +845,23 @@ export default class WorktreeSprawl extends View {
   onKey(event, cx) {
     if (this.showSettings || this.deleting || event.keystroke !== event.key) return;
     const key = event.key;
+    if (this.pendingRemove) {
+      if (key === "escape") { this.pendingRemove = null; cx.notify(); }
+      return;
+    }
     if (this.confirm) {
       if (key === "escape") { this.confirm = null; cx.notify(); }
       else if (key === "enter") {
         const { clean } = this.confirmParts(this.model());
-        if (clean.length) this.remove(clean.map((t) => t.path), cx);
+        if (clean.length) this.remove(clean.map((t) => t.path), cx, { discard: false });
       }
       return;
     }
     if (key === "delete" || key === "backspace") {
       const pinned = this.model().tiles.find((t) => t.path === this.pinned);
       const paths = this.selected.size ? [...this.selected] : pinned && pinned.state === "orphan" && !pinned.locked ? [pinned.path] : [];
-      if (!paths.length) return;
-      if (this.busyWork() || !this.liveScan) {
-        notify({ title: "Wait for the scan to finish", body: "Worktrees can be removed once the current scan is complete.", level: "warning" });
-        return;
-      }
+      // Asking is fine while a scan runs: a removal confirmed then waits for the scan (see remove).
+      if (!paths.length || !this.loaded || this.pruning) return;
       this.askRemove(paths, "selected", cx);
     } else if (key === "escape" && this.pinned) {
       this.pinned = null;
@@ -854,11 +869,18 @@ export default class WorktreeSprawl extends View {
     }
   }
 
-  remove(paths, cx) {
+  /**
+   * Removes worktrees the person confirmed. `discard` is true only when they chose to discard uncommitted
+   * changes and local files: without it a worktree that has either by now is skipped, never forced.
+   */
+  remove(paths, cx, { discard = false } = {}) {
     this.confirm = null;
     if (this.demo) { cx.notify(); return; }
+    if (this.deleting || this.pruning) { cx.notify(); return; }
     if (this.busyWork() || !this.liveScan) {
-      notify({ title: "Wait for the scan to finish", body: "Worktrees can be removed once the current scan is complete.", level: "warning" });
+      // A scan is running (or none has finished yet): the removal starts by itself when it ends.
+      this.pendingRemove = { paths, discard };
+      if (!this.busyWork()) this.scan(cx, { sizes: "missing" });
       cx.notify();
       return;
     }
@@ -875,6 +897,7 @@ export default class WorktreeSprawl extends View {
         let skip = null;
         if (!tile) skip = "no longer listed";
         else if (tile.locked) skip = tile.lockUnknown ? "lock state unknown" : "locked";
+        else if (!discard && (tile.dirty || tile.hasLocal)) skip = tile.dirty ? "it now has uncommitted changes" : "it now has local files";
         else {
           // Final checks right before the destructive command, with symlinks resolved:
           // no live terminal inside it, and git's own records still say it isn't locked.
@@ -891,7 +914,7 @@ export default class WorktreeSprawl extends View {
           this.failures.push(`${tilde(path)}: skipped (${skip})`);
         } else {
           // --force only for uncommitted changes, which the person chose to discard in the confirmation.
-          const args = ["-C", tile.repoRoot, "worktree", "remove", ...(tile.dirty ? ["--force"] : []), path];
+          const args = ["-C", tile.repoRoot, "worktree", "remove", ...(discard && tile.dirty ? ["--force"] : []), path];
           const r = await safeExec("git", args, { timeout: 180_000 });
           if (r.code === 0) {
             removed += 1;
@@ -937,6 +960,45 @@ export default class WorktreeSprawl extends View {
       this.pruning = false;
       scx.notify();
       this.scan(scx, { sizes: "missing" });
+    });
+  }
+
+  /**
+   * Settings → Tab bar button: puts the Worktrees launcher button beside the tab bar, once. Herdr replaces
+   * its own layouts on every start, so for one of those the button goes into a copy ("<name>-worktrees")
+   * that becomes the shown layout; a layout of the person's own gets the block in its file.
+   */
+  addToolbarButton(cx) {
+    if (this.demo || this.addingButton) return;
+    this.addingButton = true;
+    cx.notify();
+    cx.spawn(async (scx) => {
+      try {
+        const name = shared("layout") ?? "main";
+        const file = (n) => `${appHome()}/layouts/${n}.json`;
+        const noTabBar = () => new Error(`"${name}" has no tab bar block to put it beside. Add the block in layout-snippet.json by hand.`);
+        if (hasToolbarButton(layout(), MOD)) {
+          notify({ title: "The Worktrees button is already in this layout", level: "info" });
+        } else if (isShippedLayout(name, await readTextFile(`${appHome()}/installed.json`))) {
+          const { tree, added } = withToolbarButton(layout(), MOD);
+          if (!added) throw noTabBar();
+          const as = copyName(name, layouts());
+          await writeTextFile(file(as), `${JSON.stringify(tree, null, 2)}\n`, null);
+          run("layout.switch", { name: as });
+          notify({ title: "Worktrees button added", body: `"${name}" is Herdr's own layout, so the button is in a copy, "${as}", which is now shown.`, level: "success" });
+        } else {
+          const text = await readTextFile(file(name));
+          if (text == null) throw new Error(`Couldn't read layouts/${name}.json.`);
+          const { tree, added } = withToolbarButton(JSON.parse(text), MOD);
+          if (!added) throw noTabBar();
+          await writeTextFile(file(name), `${JSON.stringify(tree, null, 2)}\n`, text);
+          notify({ title: "Worktrees button added", body: `It's beside the tab bar in "${name}".`, level: "success" });
+        }
+      } catch (error) {
+        notify({ title: "Couldn't add the Worktrees button", body: String(error?.message ?? error), level: "warning" });
+      }
+      this.addingButton = false;
+      scx.notify();
     });
   }
 
@@ -1072,6 +1134,7 @@ export default class WorktreeSprawl extends View {
     const body = [this.header(c, m)];
     if (this.error) body.push(notice(c, { title: "Scan failed", body: this.error }));
     if (this.deleting) body.push(notice(c, { tone: c.accent, title: `Removing worktrees… ${this.deleting.done}/${this.deleting.total}`, body: "Running git worktree remove." }));
+    else if (this.pendingRemove) body.push(notice(c, { tone: c.accent, title: `Removing ${plural(this.pendingRemove.paths.length, "worktree")} when the scan finishes…`, body: "Nothing else to do: it starts by itself. Esc cancels." }));
     else if (this.confirm) body.push(this.confirmBar(c, m));
     if (this.failures.length && !this.deleting) body.push(this.failuresBar(c));
     if (this.stale.length && !this.showSettings && this.loaded) body.push(this.staleBar(c));
@@ -1169,10 +1232,10 @@ export default class WorktreeSprawl extends View {
       .child(button("wtm-confirm-cancel", "Cancel", (_e, cx) => { this.confirm = null; cx.notify(); }, c, { variant: "outline" }))
       .when(clean.length > 0, (el) => el.child(button("wtm-confirm-clean",
         risky.length ? `Remove ${clean.length} clean` : `Remove ${clean.length}`,
-        (_e, cx) => this.remove(clean.map((t) => t.path), cx), c, { variant: risky.length ? "outline" : "danger" })))
+        (_e, cx) => this.remove(clean.map((t) => t.path), cx, { discard: false }), c, { variant: risky.length ? "outline" : "danger" })))
       .when(risky.length > 0, (el) => el.child(button("wtm-confirm-all",
         `Remove all ${targets.length}, discard ${dirty.length && local.length ? "changes and local files" : dirty.length ? "changes" : "local files"}`,
-        (_e, cx) => this.remove(targets.map((t) => t.path), cx), c, { variant: "danger" })));
+        (_e, cx) => this.remove(targets.map((t) => t.path), cx, { discard: true }), c, { variant: "danger" })));
     return v_flex().w_full().gap(G.sm).p(G.md).rounded(R.control).bg(c.card).border_1().border_color(c.destructive)
       .child(div().text_size(this.fs(12)).font_semibold().child(targets.length ? "Remove worktrees?" : "Nothing to remove"))
       .children(lines.map((l) => div().text_size(T.small).text_color(c.mutedForeground).child(l)))
@@ -1699,7 +1762,7 @@ export default class WorktreeSprawl extends View {
         .when(isOrphan && !tile.locked, (el) => el.child(button("wtm-toggle-select", selected ? "Deselect" : "Select to delete",
           (_e, cx) => this.toggleSelect(tile, cx), c, { variant: "outline" }))
           .child(button("wtm-delete-one", "Delete…", (_e, cx) => this.askRemove([tile.path], "selected", cx), c,
-            { variant: "danger", disabled: this.busyWork() || !this.liveScan, tooltip: "Remove this worktree (asks first). Key: Delete" }))))
+            { variant: "danger", disabled: Boolean(this.deleting) || this.pruning, tooltip: "Remove this worktree (asks first). Key: Delete" }))))
       .when(isOrphan && !tile.locked, (el) => el.child(div().text_size(T.label).text_color(c.dim)
         .child("Press Delete to remove it, then Enter to confirm.")));
   }
@@ -1736,12 +1799,28 @@ export default class WorktreeSprawl extends View {
     return v_flex().id("wtm-settings-scroll").w_full().flex_1().min_h(0).overflow_y_scrollbar()
       .child(v_flex().w_full().max_w(820).gap(G.lg).pb(G.xl)
         .child(this.foldersCard(c, m))
+        .child(this.buttonCard(c))
         .child(this.cacheCard(c))
         .child(this.textCard(c))
         .child(this.colorsCard(c))
         .child(card(c, G.lg, G.sm)
           .child(cardHeader("What counts as an orphan", null, c))
           .child(mutedText("A worktree with no live terminal whose folder is inside it: no agent, no shell. Worktrees with only a shell are shown as Terminal only and are never removed. Locked worktrees are skipped. Removing runs git worktree remove (with --force only for worktrees with uncommitted changes, after you confirm), then git worktree prune. Branches are never deleted.", c, T.body))));
+  }
+
+  buttonCard(c) {
+    const name = shared("layout") ?? "main";
+    const has = hasToolbarButton(layout(), MOD);
+    return card(c, G.lg, G.md)
+      .child(cardHeader("Tab bar button",
+        "A Worktrees button beside the tab bar that opens this tab. Herdr replaces its own layouts each time it starts, so for one of those the button is added to a copy of the layout, which is then shown.", c))
+      .child(h_flex().w_full().gap(G.md).items_center().justify_between().px(G.md).py(G.sm)
+        .rounded(R.control).bg(c.muted).border_1().border_color(c.border)
+        .child(v_flex().flex_1().min_w(0).gap(2)
+          .child(div().text_size(T.value).font_medium().truncate().child(has ? "The button is in this layout" : "This layout has no Worktrees button"))
+          .child(div().text_size(T.label).text_color(c.dim).truncate().child(`Shown layout: ${name}`)))
+        .child(button("wtm-add-button", has ? "Added" : "Add to layout", (_e, cx) => this.addToolbarButton(cx), c,
+          { variant: has ? "ghost" : "primary", disabled: has || this.addingButton })));
   }
 
   foldersCard(c, m) {

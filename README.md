@@ -61,7 +61,8 @@ For one worktree the quick way is the keyboard: click an orphan, press **Delete*
 - Right before each removal the mod checks again that no terminal is inside and that the worktree isn't locked. If the lock state can't be read, the worktree is skipped.
 - Worktrees locked with `git worktree lock` can't be selected.
 - Branches are never deleted, so unpushed commits stay on their branch.
-- The delete buttons are enabled only after a complete scan and measurement in this session, never from cached results.
+- Nothing is removed from cached results: a removal waits for a complete scan and measurement in this session. If you confirm while a scan is running, the tab says "Removing n worktrees when the scan finishes…" and starts by itself; Esc cancels it.
+- Removing the clean ones never discards anything: a worktree that has gained uncommitted changes or local files since you confirmed is skipped.
 
 | Orphans selected | The confirmation |
 |---|---|
@@ -116,13 +117,15 @@ Or ask your agent to install it from this repo; `RECIPE.md` describes the whole 
 
 Then open **⚙ Settings** and add the folders your worktrees live in.
 
-**A Worktrees button in the tab bar (optional).** Add the block in `layout-snippet.json` to a row of a layout of your own, such as the row that holds the `tabs` block. Herdr's shipped layouts are read-only, so clone one first:
+**A Worktrees button in the tab bar (optional).** Open **⚙ Settings** and click **Add to layout** under **Tab bar button**. The button goes beside the tab bar; it focuses the Worktrees tab in the current space, or opens one.
+
+Herdr replaces its own layouts (`main`, `terminals`, `win98`) every time it starts, so a button added to one of those would be gone after a restart. When the layout you are using is one of them, **Add to layout** makes a copy with the button in it (`<name>-worktrees`) and switches to the copy; your original is not touched. When it is a layout of your own, the block is added to that layout's file. A layout that already has the button is left alone, so it is never added twice.
+
+To do it by hand, add the block in `layout-snippet.json` to a row of a layout of your own, such as the row that holds the `tabs` block, cloning a shipped layout first:
 
 ```sh
 herdr-app do layout.clone '{"name":"main","as":"my-main"}'
 ```
-
-The button focuses the Worktrees tab in the current space, or opens one.
 
 **A key (optional).** Add a binding to the `global` section of `~/.config/herdr-app/keys.json`, with any key you like:
 
@@ -165,12 +168,14 @@ rsync -a --delete --exclude='*.d.ts' ~/code/worktree-sprawl/mods/worktree-sprawl
 
 **"Scan failed" on opening.** On Windows, or with git missing or older than 2.31, the tab says so under "Scan failed" instead of showing an empty list. After updating git, press **↻ Refresh**.
 
+**The Worktrees button disappeared after restarting Herdr.** It was added to one of Herdr's own layouts, which Herdr restores on every start (the edited one is kept as `<name>-edited`). Open the tab with `herdr-app do tab.new --name Worktrees --mod worktree-sprawl`, then use **⚙ Settings → Tab bar button → Add to layout**, which puts it in a copy that stays.
+
 **Errors.** `herdr-app status` lists errors from mods. Cache problems are logged with the prefix `worktree-sprawl:`.
 
 ## Development
 
 ```sh
-node --test tests/                           # the list's sort rules, the platform and git checks
+node --test tests/                           # sort rules, platform and git checks, the layout button
 herdr-app check mods/worktree-sprawl         # loads and renders the mod once
 ```
 
