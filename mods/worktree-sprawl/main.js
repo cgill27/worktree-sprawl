@@ -1107,10 +1107,10 @@ export default class WorktreeSprawl extends View {
   helpIcon(key, c) {
     const help = HELP[key];
     const size = Math.round(16 * this.prefs().textScale);
-    const trigger = div().id(`wtm-help-${key}`).size(size).flex_none().items_center().justify_center().rounded_full()
+    const trigger = div().id(`wtm-help-${key}`).size(size).flex().flex_none().items_center().justify_center().rounded_full()
       .border_1().border_color(c.input).bg(c.card).cursor_pointer()
       .hover((style) => style.bg(c.subtle).border_color(c.ring))
-      .child(div().text_size(this.fs(10)).font_semibold().text_color(c.mutedForeground).child("?"));
+      .child(svg(`mods/${MOD}/help.svg`).size(size - 2).flex_none().text_color(c.mutedForeground));
     const body = v_flex().w(Math.round(340 * this.prefs().textScale)).p(G.md).gap(G.sm).rounded(R.card).bg(c.popover).border_1().border_color(c.border)
       .child(div().text_size(this.fs(12.5)).font_semibold().text_color(c.text).child(help.title))
       .children(help.body.map((para) => (typeof para === "string"
