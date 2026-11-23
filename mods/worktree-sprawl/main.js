@@ -37,10 +37,6 @@ const SCALE_PRESETS = [0.9, 1, 1.15, 1.3, 1.5];
 const T0 = { ...T };
 const HC0 = { ...HC };
 const HEX = /^#[0-9a-f]{6}$/i;
-// Herdr interrupts a render that takes too long ("This view could not be re-rendered / interrupted").
-// render() times its parts; a line under the header reports them once a render took this many ms or
-// was cut off, so a slow machine shows where the time goes. 0 always shows the line.
-const RENDER_SLOW_MS = 25;
 const PRESET_COLORS = [
   "#ef4444", "#f97316", "#f59e0b", "#eab308", "#84cc16", "#22c55e", "#10b981", "#14b8a6",
   "#06b6d4", "#0ea5e9", "#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#d946ef", "#ec4899",
@@ -395,7 +391,8 @@ export default class WorktreeSprawl extends View {
     this.everLive = false;          // a scan has completed this session (cached results replaced)
     this.queued = null;             // a scan asked for while busy: "missing" | "stale" | "all"
     this.pruning = false;
-    // Render timing (see RENDER_SLOW_MS): `open` is the render in flight; one still open when the next starts was cut off.
+    // Render timing, shown with Settings > Diagnostics on: Herdr interrupts a render that takes too long
+    // ("This view could not be re-rendered / interrupted"). `open` is the render in flight; one still open when the next starts was cut off.
     this.listTop = 0;               // the list's scroll position in px: only the rows in view are built
     this.listMax = 0;
     this.rowsSize = { width: 0, height: 0 };
@@ -1042,6 +1039,7 @@ export default class WorktreeSprawl extends View {
       colors: p.colors && typeof p.colors === "object" ? p.colors : {},
       repoColors: Array.isArray(p.repoColors) ? p.repoColors : [],
       cache: p.cache !== false,
+      debug: p.debug === true,
       cacheTtlMin: TTL_CHOICES.includes(p.cacheTtlMin) ? p.cacheTtlMin : 15,
     };
   }
@@ -1210,7 +1208,7 @@ export default class WorktreeSprawl extends View {
 
     this.mark("header");
     const body = [this.header(c, m)];
-    if (this.perf.cut || (this.perf.slowest?.total ?? 0) >= RENDER_SLOW_MS) body.push(this.timingLine(c, m));
+    if (this.prefs().debug) body.push(this.timingLine(c, m));
     if (this.error) body.push(notice(c, { title: "Scan failed", body: this.error }));
     if (this.deleting) body.push(notice(c, { tone: c.accent, title: `Removing worktrees… ${this.deleting.done}/${this.deleting.total}`, body: "Running git worktree remove." }));
     else if (this.pendingRemove) body.push(notice(c, { tone: c.accent, title: `Removing ${plural(this.pendingRemove.paths.length, "worktree")} when the scan finishes…`, body: "Nothing else to do: it starts by itself. Esc cancels." }));
@@ -1915,9 +1913,20 @@ export default class WorktreeSprawl extends View {
         .child(this.cacheCard(c))
         .child(this.textCard(c))
         .child(this.colorsCard(c))
+        .child(this.diagnosticsCard(c))
         .child(card(c, G.lg, G.sm)
           .child(cardHeader("What counts as an orphan", null, c))
           .child(mutedText("A worktree with no live terminal whose folder is inside it: no agent, no shell. Worktrees with only a shell are shown as Terminal only and are never removed. Locked worktrees are skipped. Removing runs git worktree remove (with --force only for worktrees with uncommitted changes, after you confirm), then git worktree prune. Branches are never deleted.", c, T.body))));
+  }
+
+  diagnosticsCard(c) {
+    return card(c, G.lg, G.md)
+      .child(h_flex().w_full().gap(G.md).items_start().justify_between()
+        .child(v_flex().flex_1().min_w(0).gap(2)
+          .child(div().text_size(T.card).font_semibold().text_color(c.text).child("Diagnostics"))
+          .child(div().text_size(T.small).text_color(c.dim)
+            .child("Show how long each part of drawing this tab takes, under the title. Turn it on if Herdr reports \"This view could not be re-rendered\": the line shows which part is slow.")))
+        .child(toggleSwitch("wtm-debug-toggle", this.prefs().debug, (next, cx) => { this.savePrefs({ debug: next }); cx.notify(); }, c, { label: "Render timing" })));
   }
 
   buttonCard(c) {

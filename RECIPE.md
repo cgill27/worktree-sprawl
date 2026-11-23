@@ -90,7 +90,10 @@ Inside the tab, top to bottom, on the theme's `canvas`, padded 16px:
    only; Orphans and selection: Orphan block, Uncommitted-changes tint, Selected
    for deletion, Pinned outline; a 10-color Repository palette; each a swatch
    button opening a picker with 24 presets, a hex field with Apply, and Use
-   default; "custom" tag; Reset all), and a short "What counts as an orphan".
+   default; "custom" tag; Reset all), **Diagnostics** (toggle, off by default:
+   a dim line under the title with the last draw's time in ms by part, the
+   slowest draw, and how many Herdr cut off, in red once any was), and a
+   short "What counts as an orphan".
 6. **First load** (no cache yet): instead of the list and map, a centered card
    with a spinner and the current step ("Finding worktrees…", "Reading git
    state…", "Measuring disk use…"), a 320px progress bar with "12 of 36", the

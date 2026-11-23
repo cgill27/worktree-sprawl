@@ -80,6 +80,7 @@ When a worktree's folder was deleted by hand, git still has a record of it. A ba
 - **Caching:** on by default. Opening the tab shows the last results at once and refreshes in the background; disk sizes are measured again after 5 minutes, 15 minutes, 1 hour or 6 hours. Turning caching off deletes the cache file.
 - **Text size:** all text, and the map's block labels separately, from 80% to 175%.
 - **Colours:** every agent-status, orphan, selection and repository color, with presets or a hex value.
+- **Diagnostics:** off by default. On, a line under the title shows how long each part of drawing the tab took, the slowest draw so far, and any that Herdr cut off.
 
 ![Settings: worktree folders, caching and text size](docs/screenshots/07-settings.png)
 
@@ -167,6 +168,8 @@ rsync -a --delete --exclude='*.d.ts' ~/code/worktree-sprawl/mods/worktree-sprawl
 **A worktree in use shows as an orphan.** Orphan status depends on a live terminal's folder being inside the worktree. A terminal on another machine, or one outside Herdr, doesn't count. Check before deleting.
 
 **"Scan failed" on opening.** On Windows, or with git missing or older than 2.31, the tab says so under "Scan failed" instead of showing an empty list. After updating git, press **↻ Refresh**.
+
+**"This view could not be re-rendered" with "interrupted".** Herdr stops a draw that takes too long and keeps showing the last one that worked. Turn on **⚙ Settings → Diagnostics** and include the "Render timing" line in a bug report: it names the slow part.
 
 **The Worktrees button disappeared after restarting Herdr.** It was added to one of Herdr's own layouts, which Herdr restores on every start (the edited one is kept as `<name>-edited`). Open the tab with `herdr-app do tab.new --name Worktrees --mod worktree-sprawl`, then use **⚙ Settings → Tab bar button → Add to layout**, which puts it in a copy that stays.
 
