@@ -37,6 +37,10 @@ const SCALE_PRESETS = [0.9, 1, 1.15, 1.3, 1.5];
 const T0 = { ...T };
 const HC0 = { ...HC };
 const HEX = /^#[0-9a-f]{6}$/i;
+// Herdr interrupts a render that takes too long ("This view could not be re-rendered / interrupted").
+// render() times its parts; a line under the header reports them once a render took this many ms or
+// was cut off, so a slow machine shows where the time goes. 0 always shows the line.
+const RENDER_SLOW_MS = 25;
 const PRESET_COLORS = [
   "#ef4444", "#f97316", "#f59e0b", "#eab308", "#84cc16", "#22c55e", "#10b981", "#14b8a6",
   "#06b6d4", "#0ea5e9", "#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#d946ef", "#ec4899",
@@ -389,6 +393,11 @@ export default class WorktreeSprawl extends View {
     this.everLive = false;          // a scan has completed this session (cached results replaced)
     this.queued = null;             // a scan asked for while busy: "missing" | "stale" | "all"
     this.pruning = false;
+    // Render timing (see RENDER_SLOW_MS): `open` is the render in flight; one still open when the next starts was cut off.
+    this.listTop = 0;               // the list's scroll position in px: only the rows in view are built
+    this.listMax = 0;
+    this.rowsSize = { width: 0, height: 0 };
+    this.perf = { n: 0, last: null, slowest: null, open: null, cut: 0, lastCut: null };
     this.demo = null;               // made-up data for screenshots (demo.js); set, nothing is scanned or changed
     this.demoRoots = null;
     this.gitOk = false;             // true once `git --version` showed a usable git
@@ -1013,6 +1022,9 @@ export default class WorktreeSprawl extends View {
   // ------------------------------------------------------------ preferences
 
   prefs() {
+    // Inside render the prefs are read once: shared() goes to the host, and the
+    // list and map ask for colours several times per worktree.
+    if (this.renderPrefs) return this.renderPrefs;
     const saved = shared(SETTINGS_KEY);
     const p = saved && typeof saved === "object" ? saved : {};
     const clamp = (v) => Math.min(SCALE_MAX, Math.max(SCALE_MIN, Number(v) || 1));
@@ -1124,14 +1136,73 @@ export default class WorktreeSprawl extends View {
 
   // ------------------------------------------------------------ render
 
-  render(_cx) {
+  render(cx) {
+    this.renderPrefs = null;
+    this.renderPrefs = this.prefs();
+    const p = this.perf;
+    const now = Date.now();
+    // A render Herdr interrupted never reached the end: count it, with the part it was in.
+    if (p.open) this.renderCut(p.open.at - p.open.start);
+    p.n += 1;
+    p.open = { n: p.n, start: now, at: now, part: "start", parts: {} };
+    let done = false;
+    try {
+      const view = this.renderView(cx);
+      this.mark("end");
+      const total = Date.now() - p.open.start;
+      p.last = { n: p.n, total, parts: p.open.parts };
+      if (!p.slowest || total > p.slowest.total) p.slowest = p.last;
+      done = true;
+      return view;
+    } finally {
+      if (!done && p.open) this.renderCut(Date.now() - p.open.start);
+      p.open = null;
+      this.renderPrefs = null;
+    }
+  }
+
+  /** The part of render() that starts now; the time since the last mark goes to the part before. */
+  mark(part) {
+    const o = this.perf.open;
+    if (!o) return;
+    const now = Date.now();
+    o.parts[o.part] = (o.parts[o.part] ?? 0) + (now - o.at);
+    o.at = now;
+    o.part = part;
+  }
+
+  renderCut(ms) {
+    const p = this.perf;
+    p.cut += 1;
+    p.lastCut = { n: p.open.n, part: p.open.part, ms, parts: p.open.parts };
+    console.log(`worktree-sprawl: render #${p.open.n} did not finish, in "${p.open.part}" after at least ${ms} ms`, JSON.stringify(p.open.parts));
+    p.open = null;
+  }
+
+  /** One line about the render before this one (this one isn't finished yet). */
+  timingLine(c, m) {
+    const p = this.perf;
+    const parts = (x) => Object.entries(x.parts).filter(([k, v]) => k !== "end" && v > 0).map(([k, v]) => `${k} ${v}`).join(" · ");
+    const text = [`Render timing · ${m.tiles.length} worktrees · #${p.n}`];
+    if (p.last) text.push(`last ${p.last.total} ms (${parts(p.last) || "under 1 ms each"})`);
+    if (p.slowest) text.push(`slowest ${p.slowest.total} ms, #${p.slowest.n} (${parts(p.slowest) || "under 1 ms each"})`);
+    text.push(p.cut
+      ? `cut off ${p.cut}×, last #${p.lastCut.n} in "${p.lastCut.part}" after ≥${p.lastCut.ms} ms (${parts(p.lastCut)})`
+      : "none cut off");
+    return div().w_full().text_size(T.label).text_color(p.cut ? c.destructive : c.dim).child(text.join("  ·  "));
+  }
+
+  renderView(_cx) {
     if (this.toolbarMode) return this.toolbar();
     this.applyScale();
     const t = theme();
     const c = tokens(t);
+    this.mark("model");
     const m = this.model();
 
+    this.mark("header");
     const body = [this.header(c, m)];
+    if (this.perf.cut || (this.perf.slowest?.total ?? 0) >= RENDER_SLOW_MS) body.push(this.timingLine(c, m));
     if (this.error) body.push(notice(c, { title: "Scan failed", body: this.error }));
     if (this.deleting) body.push(notice(c, { tone: c.accent, title: `Removing worktrees… ${this.deleting.done}/${this.deleting.total}`, body: "Running git worktree remove." }));
     else if (this.pendingRemove) body.push(notice(c, { tone: c.accent, title: `Removing ${plural(this.pendingRemove.paths.length, "worktree")} when the scan finishes…`, body: "Nothing else to do: it starts by itself. Esc cancels." }));
@@ -1139,9 +1210,11 @@ export default class WorktreeSprawl extends View {
     if (this.failures.length && !this.deleting) body.push(this.failuresBar(c));
     if (this.stale.length && !this.showSettings && this.loaded) body.push(this.staleBar(c));
 
+    this.mark("settings");
     if (this.showSettings) body.push(this.settingsView(c, m));
     else if (!this.loaded) body.push(this.loadingView(c));
     else {
+      this.mark("legend");
       body.push(this.legendRow(c, t));
       const zoom = Number(settings()?.zoom) || 1;
       const leftH = this.leftSize.height / zoom;
@@ -1153,11 +1226,14 @@ export default class WorktreeSprawl extends View {
             scx.notify();
           }
         })
-        .when(this.layoutMode !== "map", (el) => el.child(this.listView(c, t, m, listH)))
-        .when(this.layoutMode !== "list", (el) => el.child(this.mapArea(c, t, m)));
+        .when(this.layoutMode !== "map", (el) => { this.mark("list"); return el.child(this.listView(c, t, m, listH)); })
+        .when(this.layoutMode !== "list", (el) => { this.mark("map"); return el.child(this.mapArea(c, t, m)); });
+      this.mark("panel");
+      const side = this.sidePanel(c, t, m);
+      this.mark("root");
       body.push(h_flex().w_full().flex_1().min_h(0).gap(G.md).items_start()
         .child(left)
-        .child(this.sidePanel(c, t, m)));
+        .child(side));
     }
 
     return v_flex().id("wtm-root").size_full().min_h(0).bg(c.canvas).text_color(c.text)
@@ -1381,7 +1457,10 @@ export default class WorktreeSprawl extends View {
         .border_1().border_color(c.border).bg(c.canvas)
         .on_click((_e, ccx) => { if (this.pinned) { this.pinned = null; ccx.notify(); } })
         .when(showHeader, (el) => el.child(h_flex().h(repoHeader).px(6).gap(6).items_center()
-          .when(Boolean(this.groupCheck("x", g.tiles, g.repo, c, t)), (e) => e.child(this.groupCheck(`wtm-mgchk-${repoIndex.get(g.repoRoot)}`, g.tiles, g.repo, c, t)))
+          .when(true, (e) => {
+            const check = this.groupCheck(`wtm-mgchk-${repoIndex.get(g.repoRoot)}`, g.tiles, g.repo, c, t);
+            return check ? e.child(check) : e;
+          })
           .child(div().text_size(T.small).font_semibold().text_color(c.text).truncate().child(g.repo))
           .child(div().text_size(T.label).text_color(c.dim).flex_none().child(`${g.tiles.length} · ${formatKB(groupKB)}`)))));
       const inner = showHeader
@@ -1440,7 +1519,7 @@ export default class WorktreeSprawl extends View {
       // A light wash so the pinned block reads as "the one in the panel".
       el = el.child(div().absolute().top(0).left(0).size_full().bg(`${String(pinColor).slice(0, 7)}26`));
     }
-    const checkbox = div().id(`wtm-chk-${n}`).size(L.box).flex_none().rounded(3).items_center().justify_center()
+    const checkbox = () => div().id(`wtm-chk-${n}`).size(L.box).flex_none().rounded(3).items_center().justify_center()
       .border_1().border_color(selected ? selColor : c.mutedForeground)
       .bg(selected ? selColor : c.card).cursor_pointer()
       .hover((st) => st.border_color(selColor))
@@ -1452,13 +1531,13 @@ export default class WorktreeSprawl extends View {
     if (w > 54 * k && h > 24 * k) {
       el = el.child(v_flex().relative().p(5).gap(1).min_w(0)
         .child(h_flex().gap(5).items_center().min_w(0)
-          .when(selectable, (e) => e.child(checkbox))
+          .when(selectable, (e) => e.child(checkbox()))
           .child(div().text_size(L.name).font_semibold().text_color(fg).truncate().child(tile.name)))
         .when(h > 42 * k, (e) => e.child(div().text_size(L.sub).text_color(fg).opacity(0.8).truncate().child(sub)))
         .when(h > 60 * k && tile.agentsIn.length > 0, (e) => e.child(div().text_size(L.sub).text_color(fg).opacity(0.8).truncate()
           .child(tile.agentsIn.map((a) => a.name).join(", ")))));
     }
-    else if (selectable && w > L.box + 8 && h > L.box + 8) el = el.child(div().relative().p(4).child(checkbox));
+    else if (selectable && w > L.box + 8 && h > L.box + 8) el = el.child(div().relative().p(4).child(checkbox()));
     return el;
   }
 
@@ -1572,6 +1651,7 @@ export default class WorktreeSprawl extends View {
           .hover((st) => st.opacity(0.85)).child(label));
       }));
 
+    // Each row is a function: only the rows in view are built (see the end of this method).
     const rows = [];
     const rowBase = (id, depth) => h_flex().id(id).w_full().h(rowH).flex_none().px(px(4)).items_center();
     const nameCell = (depth, parts) => h_flex().gap(px(6)).items_center().min_w(0).pl(px(depth * 16)).children(parts);
@@ -1627,7 +1707,7 @@ export default class WorktreeSprawl extends View {
 
     let n = 0;
     if (this.listMode === "tree") {
-      rows.push(rowBase("wtm-row-root", 0)
+      rows.push(() => rowBase("wtm-row-root", 0)
         .child(cell(COLS[0], nameCell(0, [chevron(true),
           this.groupCheck("wtm-gchk-all", m.tiles, "all folders", c, t) ?? div().w(px(13)).flex_none(),
           swatch(c.accent, false), txt(`All worktrees (${m.tiles.length})`, c.text, { bold: true })])))
@@ -1640,7 +1720,7 @@ export default class WorktreeSprawl extends View {
       for (const g of [...groups].sort(groupOrder)) {
         const open = !this.collapsed.has(g.repoRoot);
         const color = this.colorMode === "repo" ? this.color(`repo-${repoIndex.get(g.repoRoot) % REPO_COLORS.length}`, t, c) : c.mutedForeground;
-        rows.push(rowBase(`wtm-row-g-${repoIndex.get(g.repoRoot)}`, 1).cursor_pointer().hover((st) => st.bg(c.subtle))
+        rows.push(() => rowBase(`wtm-row-g-${repoIndex.get(g.repoRoot)}`, 1).cursor_pointer().hover((st) => st.bg(c.subtle))
           .on_click((_e, ccx) => { if (open) this.collapsed.add(g.repoRoot); else this.collapsed.delete(g.repoRoot); ccx.notify(); })
           .child(cell(COLS[0], nameCell(1, [chevron(open),
             this.groupCheck(`wtm-gchk-${repoIndex.get(g.repoRoot)}`, g.tiles, g.repo, c, t) ?? div().w(px(13)).flex_none(),
@@ -1653,11 +1733,24 @@ export default class WorktreeSprawl extends View {
           .child(cell(COLS[5], txt([g.agents ? plural(g.agents, "agent") : null, g.orphans ? plural(g.orphans, "orphan") : null].filter(Boolean).join(" · ") || "Shells only",
             c.mutedForeground)))
           .child(cell(COLS[6], txt(formatAge(g.newest), c.mutedForeground))));
-        if (open) for (const x of [...g.tiles].sort(tileOrder)) rows.push(worktreeRow(x, 2, g.size ?? 0, n++));
+        if (open) for (const x of [...g.tiles].sort(tileOrder)) { const i = n++; rows.push(() => worktreeRow(x, 2, g.size ?? 0, i)); }
       }
     } else {
-      for (const x of [...m.tiles].sort(tileOrder)) rows.push(worktreeRow(x, 0, total, n++));
+      for (const x of [...m.tiles].sort(tileOrder)) { const i = n++; rows.push(() => worktreeRow(x, 0, total, i)); }
     }
+
+    // The list scrolls itself: every row has the same height, so the rows in view follow from the
+    // scroll position, and a render costs the same however many worktrees there are. (Herdr's own
+    // lazy lists allow no handlers inside a row, and these rows have a checkbox each.)
+    const zoom = Number(settings()?.zoom) || 1;
+    const viewH = this.rowsSize.height > 0 ? this.rowsSize.height / zoom : (height ?? 600);
+    const maxTop = Math.max(0, rows.length * rowH - viewH);
+    this.listMax = maxTop;
+    this.listTop = Math.min(maxTop, Math.max(0, this.listTop));
+    const first = Math.floor(this.listTop / rowH);
+    const shown = rows.slice(first, first + Math.ceil(viewH / rowH) + 1).map((row) => row());
+    const thumbH = Math.max(24, Math.round(viewH * viewH / Math.max(1, rows.length * rowH)));
+    const thumbTop = maxTop > 0 ? Math.round((viewH - thumbH) * (this.listTop / maxTop)) : 0;
 
     const toolbar = h_flex().w_full().flex_none().gap(G.sm).items_center().justify_between().px(px(8)).py(px(6)).border_b(1).border_color(c.border)
       .child(segmented("wtm-listmode", [{ key: "tree", label: "By repository" }, { key: "flat", label: "Flat list" }], this.listMode,
@@ -1674,9 +1767,20 @@ export default class WorktreeSprawl extends View {
       .rounded(R.card).bg(c.card).border_1().border_color(c.border).overflow_hidden()
       .child(toolbar)
       .child(header)
-      .child(v_flex().id("wtm-list-rows").w_full().flex_1().min_h(0).overflow_y_scrollbar()
+      .child(div().id("wtm-list-rows").relative().w_full().flex_1().min_h(0).overflow_hidden()
+        .on_size_change((size, scx) => {
+          if (Math.abs(size.height - this.rowsSize.height) >= 1 || Math.abs(size.width - this.rowsSize.width) >= 1) {
+            this.rowsSize = size;
+            scx.notify();
+          }
+        })
+        .on_scroll_wheel((event, wcx) => {
+          const next = Math.min(this.listMax, Math.max(0, this.listTop - (event.delta?.y ?? 0) / zoom));
+          if (next !== this.listTop) { this.listTop = next; wcx.notify(); }
+        })
         .on_hover((hovered, hcx) => { if (!hovered && this.hover) { this.hover = null; hcx.notify(); } })
-        .children(rows));
+        .child(v_flex().absolute().left(0).top(first * rowH - this.listTop).w_full().children(shown))
+        .when(maxTop > 0, (e) => e.child(div().absolute().right(2).top(thumbTop).w(4).h(thumbH).rounded(2).bg(c.dim).opacity(0.6))));
   }
 
   // ------------------------------------------------------------ side panel
