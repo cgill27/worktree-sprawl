@@ -161,9 +161,11 @@ const tilde = (p) => (p && p.startsWith(home() + "/") ? "~" + p.slice(home().len
 const basename = (p) => String(p).split("/").filter(Boolean).pop() ?? p;
 const inside = (child, parent) => Boolean(child && parent) && (child === parent || child.startsWith(parent + "/"));
 /** Comparison key for a path: case-folded where the file system usually is (macOS, Windows). */
+let foldCase = null;   // asked of the app once: pkey runs for every terminal against every worktree
 const pkey = (p) => {
   if (!p) return "";
-  return ["macos", "windows"].includes(appWindow()?.platform) ? String(p).toLowerCase() : String(p);
+  foldCase ??= ["macos", "windows"].includes(appWindow()?.platform);
+  return foldCase ? String(p).toLowerCase() : String(p);
 };
 /** True when `cwd` is inside the worktree, comparing raw and physical (symlink-resolved) spellings. */
 const within = (cwd, cwdReal, w) =>
@@ -769,9 +771,15 @@ export default class WorktreeSprawl extends View {
 
   /** The worktrees joined with the live terminals in them. */
   model() {
+    this.mark("terminals");
     const links = linkTerminals();
+    this.mark("model");
+    // Path keys once per terminal and per worktree, not once per pair (see within).
+    const keyed = this.demo ? [] : links.map((l) => ({ l, cwd: pkey(l.cwd), real: pkey(this.cwdReal.get(l.cwd)) }));
     const tiles = this.items.map((w) => {
-      const users = this.demo ? (this.demo.users.get(w.path) ?? []) : links.filter((l) => within(l.cwd, this.cwdReal.get(l.cwd), w));
+      const path = pkey(w.path), real = pkey(w.real);
+      const users = this.demo ? (this.demo.users.get(w.path) ?? [])
+        : keyed.filter((k) => inside(k.cwd, path) || inside(k.cwd, real) || inside(k.real, real) || inside(k.real, path)).map((k) => k.l);
       const agentsIn = users.filter((u) => u.agent);
       let status = null;
       for (const a of agentsIn) if ((STATUS_RANK[a.status] ?? 0) > (STATUS_RANK[status] ?? 0)) status = a.status;
