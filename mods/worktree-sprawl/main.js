@@ -1143,6 +1143,8 @@ export default class WorktreeSprawl extends View {
   // ------------------------------------------------------------ render
 
   render(cx) {
+    // The tab bar button: init() returns before the tab's own state exists, so nothing below applies.
+    if (this.toolbarMode) return this.toolbar();
     this.renderPrefs = null;
     this.renderPrefs = this.prefs();
     const p = this.perf;
@@ -1199,7 +1201,6 @@ export default class WorktreeSprawl extends View {
   }
 
   renderView(_cx) {
-    if (this.toolbarMode) return this.toolbar();
     this.applyScale();
     const t = theme();
     const c = tokens(t);
