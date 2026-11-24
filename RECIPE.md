@@ -208,7 +208,8 @@ All colors come from `theme()` unless the person picks their own.
   `{ "id": "worktree-sprawl-toolbar-button", "type": "block", "size": { "px": 112 },
   "content": { "mod": "worktree-sprawl", "props": { "mode": "toolbar" } } }`.
   `mod.json` is `{ "place": "none", "title": "Worktree Sprawl" }`.
-- **Files:** `main.js` (the view), `treemap.js` (pure squarified layout and
+- **Files:** `main.js` (the view; its tab bar button is rendered and clicked by
+  `tests/toolbar.test.mjs`, in Node with stand-ins for Herdr's modules), `treemap.js` (pure squarified layout and
   pixel snapping), `sorting.js` (pure sort values and comparator, tested by
   `tests/sorting.test.mjs`), `checks.js` (pure: the Windows and git-version
   messages, tested by `tests/checks.test.mjs`), `layout.js` (pure: adds the launcher button

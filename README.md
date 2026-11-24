@@ -178,8 +178,8 @@ rsync -a --delete --exclude='*.d.ts' ~/code/worktree-sprawl/mods/worktree-sprawl
 ## Development
 
 ```sh
-node --test tests/                           # sort rules, platform and git checks, the layout button
-herdr-app check mods/worktree-sprawl         # loads and renders the mod once
+node --test tests/                           # sort rules, platform and git checks, the layout button, the tab bar button's render
+herdr-app check mods/worktree-sprawl         # loads and renders the tab once (not the tab bar button)
 ```
 
 `herdr-app check` doesn't run click handlers or later states, so also try a change in the running app. Test removal against throwaway worktrees (`git worktree add /tmp/wt-test-1 -b wt-test-1`, then add `/tmp` in Settings), never real work.
